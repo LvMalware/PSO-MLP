@@ -1,6 +1,9 @@
 import numpy as np
+import warnings
+warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning)
+
 def func(ax_b):
-	return 1.0 / (1.0 + np.exp(-ax_b))
+    return 1.0 / (1.0 + np.exp(-ax_b))
 
 class Particle:
     def __init__(self, data, hlayers, inertia=0.72984, c1=2.05, c2=2.05, alpha=(-1.0, 1.0)):
