@@ -1,64 +1,63 @@
-import numpy as np
 import warnings
-warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning)
+import numpy as np
 
-def func(ax_b):
-    return 1.0 / (1.0 + np.exp(-ax_b))
+warnings.filterwarnings('ignore')
+
+activation_functions = {
+        'sigmoid' : lambda x: 1.0 / (1.0 + np.exp(-x)),
+        'relu' : lambda x: np.maximum(0, x) #,
+}
 
 class Particle:
-    def __init__(self, data, hlayers, inertia=0.72984, c1=2.05, c2=2.05, alpha=(-1.0, 1.0)):
+    def __init__(self, data, layers, activation, c1, c2, w, alpha):
+        self.g = activation_functions[activation]
+        self.w = w
         self.c1 = c1
         self.c2 = c2
+        self.loss = 1
         self.data = data
-        self.bias = [np.array([0] * n) for n in hlayers[1:]]
-        self.inertia = inertia
-        self.weights = np.array([ np.random.uniform(*alpha, size=(hlayers[i], hlayers[i + 1])) for i in range(len(hlayers) - 1) ], dtype=object)
-        self.velocity = np.array([ np.random.uniform(*alpha, size=(hlayers[i], hlayers[i + 1])) for i in range(len(hlayers) - 1) ], dtype=object)
-        self.score = None
-        self.pbest = np.array(self.weights, dtype=object)
-        self.sbest = None
+        self.dspace = sum([layers[i] * layers[i+1] for i in range(len(layers)-1)]) + sum(layers)
+        self.layers = layers
+        self.weights = np.random.normal(*alpha, size=(self.dspace,))
+        self.velocity = np.random.normal(*alpha, size=(self.dspace,))
+        self.local_best = np.array(self.weights)
 
-    def fitness(self, keep=True):
-        if keep and self.score is not None:
-            return self.score
+    def score(self, x, y):
+        pred = self.predict(x)
+        return sum([a == b for a, b in zip(y, pred)]) / len(y)
 
-        pred = self.classify()
-        targ = self.data[1]
-        self.score = sum(sum((pred - targ) ** 2))
+    def predict(self, x):
+        l = 0
+        for i in range(len(self.layers) - 1):
+            r, c = self.layers[i], self.layers[i+1]
+            size = r * c
+            w = self.weights[l : l + size].reshape((r, c))
+            l = l + size
+            b = self.weights[l : l + c].reshape((c,))
+            l = l + c
+            x = self.g(x.dot(w) + b)
 
-        if self.sbest is None or self.score < self.sbest:
-            self.sbest = self.score
-            self.pbest = np.array(self.weights, dtype=object)
+        return np.argmax(x, axis=1)
 
-        return self.score
-
-    def update(self, gbest):
-        if self == gbest:
-            return self.fitness()
-
-        for i in range(len(self.weights)):
-            self.weights[i] += self.velocity[i]
-
-        self.velocity = [ v * self.inertia for v in self.velocity ] + self.c1 * np.random.rand() * (self.pbest - self.weights) + self.c2 * np.random.rand() * (gbest.weights - self.weights)
-        return self.fitness(False)
-		
-
-    def classify(self, data=None):
-        x, y = data if data is not None else self.data
-        for bias, layer in zip(self.bias, self.weights):
-            x = func(x.dot(layer) + bias)
-
-        return x
-
-    def __lt__(self, other):
-        return self.fitness() < other.fitness()
-
-    def __str__(self):
-        return f"Particle(fitness={self.fitness()})"
+    def get_loss(self, recalculate=False):
+        if recalculate or self.loss is None:
+            self.loss = 1.0 - self.score(*self.data)
+        return self.loss
 
     def __gt__(self, other):
-        return self.fitness() > other.fitness()
+        return self.get_loss() > other.get_loss()
+
+    def __lt__(self, other):
+        return self.get_loss() < other.get_loss()
 
     def __eq__(self, other):
-        return self.fitness() == other.fitness()
+        return self.get_loss() == other.get_loss()
 
+    def update(self, gbest):
+        r1, r2 = np.random.rand(2)
+        self.velocity = self.velocity * self.w + self.c1 * r1 * (self.weights - self.local_best) + self.c2 * r2 * (self.weights - gbest.weights)
+        self.weights += self.velocity
+        loss = self.loss
+        if self.get_loss(True) < loss:
+            self.local_best = np.array(self.weights)
+        return self 
